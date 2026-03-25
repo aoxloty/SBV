@@ -63,7 +63,7 @@ app.get('/api/oauth/callback', async (req, res) => {
         if (!response.ok) throw new Error(tokens.error_description || 'Cannot fetch access token');
 
         // Đẩy dữ liệu Metadata (Linked Role) lên Discord cho User này
-        await updateMetadata(tokens.access_token);
+        await updateMetadata(tokens.access_token, req);
 
         // ĐÃ THAY THẾ: Trả về file success.html của bạn thay vì chữ thuần túy
         res.sendFile(__dirname + '/public/success.html');
@@ -78,20 +78,52 @@ app.get('/api/oauth/callback', async (req, res) => {
 
 const ALLOWED_USERS = ['407183255604035596', '1329632012008689724'];
 
-async function updateMetadata(accessToken) {
-    // 1. Lấy thông tin ID người dùng hiện tại từ Discord
+app.get('/auth/revoke', async (req, res) => {
+    // Luồng này bắt người dùng bấm vào để tự gỡ hoặc bạn mượn Access Token của họ để gỡ
+    const accessToken = req.session.discord_token;
+
+    if (!accessToken) {
+        return res.status(401).send('❌ Không tìm thấy phiên đăng nhập. Hãy bấm /auth/login trước.');
+    }
+
+    try {
+        // Gửi Metadata rỗng ({}) lên Discord để ép thu hồi Role ngay lập tức
+        await fetch(`https://discord.com/api/v10/users/@me/applications/${process.env.DISCORD_CLIENT_ID}/role-connection`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                platform_name: 'SBV Linked Roles System',
+                platform_username: 'Đã gỡ liên kết',
+                metadata: {}, // Gửi object rỗng để Reset mọi dữ liệu về 0
+            }),
+        });
+
+        res.send('✅ Đã gỡ bỏ liên kết hệ thống thành công! Role trên Discord sẽ bị thu hồi sau vài giây.');
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('❌ Lỗi khi thu hồi liên kết.');
+    }
+});
+
+
+// --- SỬA LẠI HÀM UPDATE METADATA ĐỂ LƯU TOKEN VÀO SESSION ---
+async function updateMetadata(accessToken, req) {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
         headers: { Authorization: `Bearer ${accessToken}` }
     });
     const userData = await userResponse.json();
 
-    // 2. CHẶN NGƯỜI LẠ: Nếu ID người dùng không nằm trong mảng ALLOWED_USERS
+    // Lưu token vào session để dùng cho việc Unlink/Revoke sau này
+    req.session.discord_token = accessToken;
+
     if (!ALLOWED_USERS.includes(userData.id)) {
-        throw new Error('You are not an allowed user!');
+        throw new Error('Bạn không có quyền nhận Linked Role này!');
     }
 
-    // 3. Nếu hợp lệ, tiến hành ghi đè dữ liệu lên Discord
-    const response = await fetch(`https://discord.com/api/v10/users/@me/applications/${process.env.DISCORD_CLIENT_ID}/role-connection`, {
+    const response = await fetch(`https://discord.get/api/v10/users/@me/applications/${process.env.DISCORD_CLIENT_ID}/role-connection`, {
         method: 'PUT',
         headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -99,11 +131,10 @@ async function updateMetadata(accessToken) {
         },
         body: JSON.stringify({
             platform_name: 'SBV Linked Roles System',
-            platform_username: userData.username, // Lấy tên thật của người dùng
+            platform_username: userData.username,
             metadata: {
-                // Sửa các key dưới đây cho đúng với cấu hình file register-metadata.js của bạn
-                // level: 100,
-                // is_vip: true
+                // Ví dụ các trường của bạn
+                // is_vip: 1, 
             },
         }),
     });

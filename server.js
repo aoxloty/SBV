@@ -1,7 +1,7 @@
-require('dotenv').config(); // Đưa lên đầu tiên để đọc file .env
+require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
-const app = express(); // Khởi tạo app TRƯỚC khi dùng app.use()
+const app = express();
 
 const PORT = process.env.PORT || 3000;
 
@@ -75,7 +75,22 @@ app.get('/api/oauth/callback', async (req, res) => {
 });
 
 // Hàm mẫu đẩy metadata lên Discord (Sửa key metadata cho khớp với register-metadata.js của bạn)
+
+const ALLOWED_USERS = ['407183255604035596', '1329632012008689724'];
+
 async function updateMetadata(accessToken) {
+    // 1. Lấy thông tin ID người dùng hiện tại từ Discord
+    const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const userData = await userResponse.json();
+
+    // 2. CHẶN NGƯỜI LẠ: Nếu ID người dùng không nằm trong mảng ALLOWED_USERS
+    if (!ALLOWED_USERS.includes(userData.id)) {
+        throw new Error('You are not an allowed user!');
+    }
+
+    // 3. Nếu hợp lệ, tiến hành ghi đè dữ liệu lên Discord
     const response = await fetch(`https://discord.com/api/v10/users/@me/applications/${process.env.DISCORD_CLIENT_ID}/role-connection`, {
         method: 'PUT',
         headers: {
@@ -84,7 +99,7 @@ async function updateMetadata(accessToken) {
         },
         body: JSON.stringify({
             platform_name: 'SBV Linked Roles System',
-            platform_username: 'SBV User',
+            platform_username: userData.username, // Lấy tên thật của người dùng
             metadata: {
                 // Sửa các key dưới đây cho đúng với cấu hình file register-metadata.js của bạn
                 // level: 100,

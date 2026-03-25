@@ -1,20 +1,23 @@
-require('dotenv').config();
+require('dotenv').config(); // Đưa lên đầu tiên để đọc file .env
 const express = require('express');
 const crypto = require('crypto');
-const app = express();
+const app = express(); // Khởi tạo app TRƯỚC khi dùng app.use()
 
 const PORT = process.env.PORT || 3000;
+
+// Cấu hình đọc file tĩnh từ thư mục public (success.html nằm ở đây)
+app.use(express.static('public'));
 
 // Sử dụng cookie/session để lưu trạng thái OAuth2
 const session = require('express-session');
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'random_secret_string',
-  resave: false,
-  saveUninitialized: true,
+    secret: process.env.SESSION_SECRET || 'random_secret_string',
+    resave: false,
+    saveUninitialized: true,
 }));
 
 app.get('/', (req, res) => {
-    res.send('✅ Server Linked Roles đang hoạt động ổn định!');
+    res.send('Server Linked Roles is running. Please go to /auth/login to start the OAuth2 process with Discord.');
 });
 
 // --- 1. ROUTE XỬ LÝ KHI USER BẤM LIÊN KẾT ROLE TRÊN DISCORD ---
@@ -38,7 +41,7 @@ app.get('/api/oauth/callback', async (req, res) => {
     const { code, state } = req.query;
 
     if (state !== req.session.state) {
-        return res.status(403).send('❌ Lỗi xác thực State không khớp!');
+        return res.status(403).send('❌ Error: Invalid state parameter. Please try again.');
     }
 
     try {
@@ -56,16 +59,18 @@ app.get('/api/oauth/callback', async (req, res) => {
         });
 
         const tokens = await response.json();
-        
-        if (!response.ok) throw new Error(tokens.error_description || 'Không lấy được token');
+
+        if (!response.ok) throw new Error(tokens.error_description || 'Cannot fetch access token');
 
         // Đẩy dữ liệu Metadata (Linked Role) lên Discord cho User này
         await updateMetadata(tokens.access_token);
 
-        res.send('🎉 Chúc mừng! Bạn đã liên kết tài khoản thành công. Hãy quay lại Discord để kiểm tra Role.');
+        // ĐÃ THAY THẾ: Trả về file success.html của bạn thay vì chữ thuần túy
+        res.sendFile(__dirname + '/public/success.html');
+
     } catch (error) {
         console.error(error);
-        res.status(500).send('❌ Có lỗi xảy ra trong quá trình OAuth2.');
+        res.status(500).send('❌ An error occurred during the OAuth2 process.');
     }
 });
 
@@ -78,10 +83,10 @@ async function updateMetadata(accessToken) {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            platform_name: 'Hệ thống SBV',
-            platform_username: 'Người dùng hệ thống',
+            platform_name: 'SBV Linked Roles System',
+            platform_username: 'SBV User',
             metadata: {
-                // Ví dụ: key của bạn đăng ký trong register-metadata.js là gì thì điền vào đây
+                // Sửa các key dưới đây cho đúng với cấu hình file register-metadata.js của bạn
                 // level: 100,
                 // is_vip: true
             },
